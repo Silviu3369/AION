@@ -1,0 +1,7 @@
+{
+  "name": "AION AI",
+  "description": "A sophisticated AI assistant with an authentic HUD interface, featuring voice conversation and real-time web search.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

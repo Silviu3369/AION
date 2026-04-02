@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  --color-jarvis-cyan: #00f2ff;
+  --color-jarvis-orange: #ff8c00;
+  --color-jarvis-bg: #050a14;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-jarvis-bg text-jarvis-cyan font-mono overflow-hidden;
+  }
+}
+
+@layer components {
+  .hud-glow {
+    @apply shadow-[0_0_15px_rgba(0,242,255,0.4)];
+  }
+  
+  .hud-border {
+    @apply border border-jarvis-cyan/40;
+  }
+
+  .hud-text {
+    @apply drop-shadow-[0_0_3px_rgba(0,242,255,0.8)] tracking-widest uppercase;
+  }
+
+  .hud-panel {
+    @apply bg-black/40 backdrop-blur-md border border-jarvis-cyan/20;
+  }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spin-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes flicker {
+  0% { opacity: 0.8; }
+  5% { opacity: 0.5; }
+  10% { opacity: 0.8; }
+  15% { opacity: 1; }
+  20% { opacity: 0.8; }
+  100% { opacity: 1; }
+}
+
+.animate-spin-slow { animation: spin-slow 20s linear infinite; }
+.animate-spin-reverse { animation: spin-reverse 15s linear infinite; }
+.animate-flicker { animation: flicker 3s infinite; }
+
+.scanline-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, transparent 50%, rgba(0, 242, 255, 0.05) 50%);
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 50;
+}
