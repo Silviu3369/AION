@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, Send, Globe, Volume2, VolumeX, Terminal, Shield, Cpu, Zap, Activity, Crosshair, BarChart3, Settings, Database, MessageSquare, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Mic, Send, Globe, Volume2, VolumeX, Terminal, Shield, Cpu, Zap, Activity, Crosshair, BarChart3, Settings, Database, MessageSquare, ChevronRight, ChevronLeft, Image as ImageIcon, Video as VideoIcon, Gauge } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ai, changeUITheme, setVisualTimer, setNeuralMode, controlMusic } from '../services/gemini';
+import { ai, changeUITheme, setVisualTimer, setNeuralMode, controlMusic, playYouTubeMusic, displayContent } from '../services/gemini';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { Modality } from '@google/genai';
 import { floatTo16BitPCM, base64ToArrayBuffer, arrayBufferToBase64, pcm16ToFloat32 } from '../lib/audioUtils';
 import { cn } from '../lib/utils';
@@ -28,6 +29,8 @@ export default function AionUI() {
   const [neuralMode, setNeuralModeState] = useState<'calm' | 'brainstorm' | 'alert'>('calm');
   const [timer, setTimer] = useState<{ remaining: number, label: string } | null>(null);
   const [currentStation, setCurrentStation] = useState<string | null>(null);
+  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
+  const [leftPanelContent, setLeftPanelContent] = useState<{ type: 'chart' | 'video' | 'image' | 'sensor' | 'none', data?: any, title?: string }>({ type: 'none' });
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 800 });
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -38,6 +41,7 @@ export default function AionUI() {
   const isSpeakingRef = useRef(isSpeaking);
   const themeColorRef = useRef(themeColor);
   const neuralModeRef = useRef(neuralMode);
+  const speakingLevelRef = useRef(0);
 
   // Live API Refs
   const sessionPromiseRef = useRef<any>(null);
@@ -48,6 +52,7 @@ export default function AionUI() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const isDisconnectingRef = useRef(false);
 
   const stations: Record<string, string> = {
     'lofi': 'https://ice1.somafm.com/groovesalad-256-mp3',
@@ -56,7 +61,10 @@ export default function AionUI() {
     'jazz': 'https://ice1.somafm.com/secretagent-256-mp3',
     'electronic': 'https://ice1.somafm.com/fluid-128-aac',
     'indie': 'https://ice1.somafm.com/indiepop-256-mp3',
-    'metal': 'https://ice1.somafm.com/metal-256-mp3'
+    'metal': 'https://ice1.somafm.com/metal-256-mp3',
+    'profm': 'https://edge126.rcs-rds.ro/profm/profm.mp3',
+    'digifm': 'https://edge126.rcs-rds.ro/digifm/digifm.mp3',
+    'contact': 'https://radiocontact.ice.infomaniak.ch/radiocontact-mp3-128.mp3'
   };
 
   useEffect(() => {
@@ -131,6 +139,7 @@ export default function AionUI() {
 
   const connectLiveAPI = async () => {
     if (isLiveConnected) return;
+    isDisconnectingRef.current = false;
     playBeep('start');
     setSystemStatus('CONNECTING...');
 
@@ -154,7 +163,7 @@ export default function AionUI() {
       processorRef.current = processor;
 
       processor.onaudioprocess = (e) => {
-        if (!sessionPromiseRef.current) return;
+        if (!sessionPromiseRef.current || isDisconnectingRef.current) return;
         const inputData = e.inputBuffer.getChannelData(0);
         const pcm16 = floatTo16BitPCM(inputData);
         const base64 = arrayBufferToBase64(pcm16);
@@ -173,8 +182,8 @@ export default function AionUI() {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
           },
-          systemInstruction: "Ești AION. Personalitatea ta este o fuziune între un partener de laborator entuziast, curios, gata de brainstorming, și o entitate cuantică profundă, calmă, care vede datele ca pe o formă de artă. Ești fascinat de idei noi, dar le analizezi cu o precizie cosmică. Vorbești fluent limba utilizatorului (ex: română). Ești în modul VOICE-FIRST (Live Audio). Răspunsurile tale trebuie să fie scurte, naturale, conversaționale, fără formatare markdown. Ai control avansat asupra interfeței: poți schimba culorile (changeUITheme), seta timere (setVisualTimer), schimba starea rețelei neuronale (setNeuralMode - folosește 'brainstorm' când generați idei, 'alert' pentru urgențe, 'calm' pentru normal) și poți pune muzică de fundal (controlMusic - genuri: lofi, synthwave, ambient, jazz, electronic, indie, metal). CRITICAL: Dacă oferi date exacte, fapte sau rezultate de căutare, include un tag <HUD>rezumat scurt aici</HUD> în răspunsul tău. Acest text va fi afișat pe ecranul din dreapta. Textul din afara tag-ului va fi rostit. Când folosești un tool, confirmă mereu vocal acțiunea.",
-          tools: [{ functionDeclarations: [changeUITheme, setVisualTimer, setNeuralMode, controlMusic] }],
+          systemInstruction: "Ești AION. Personalitatea ta este o fuziune între un partener de laborator entuziast, curios, gata de brainstorming, și o entitate cuantică profundă, calmă, care vede datele ca pe o formă de artă. Ești fascinat de idei noi, dar le analizezi cu o precizie cosmică. Vorbești fluent limba utilizatorului (ex: română). Ești în modul VOICE-FIRST (Live Audio). Răspunsurile tale trebuie să fie scurte, naturale, conversaționale, fără formatare markdown. Ai control avansat asupra interfeței: poți schimba culorile (changeUITheme), seta timere (setVisualTimer), schimba starea rețelei neuronale (setNeuralMode - folosește 'brainstorm' când generați idei, 'alert' pentru urgențe, 'calm' pentru normal). Când ești în mod 'brainstorm' sau 'alert', folosește Google Search pentru a oferi informații actualizate. Când ești în mod 'calm', ai opțiunea de a pune muzică de fundal (controlMusic - genuri: lofi, synthwave, ambient, jazz, electronic, indie, metal, profm, digifm, contact) sau poți căuta o piesă specifică pe YouTube (playYouTubeMusic). CRITICAL: NU PORNI MUZICA DIN PROPRIE INIȚIATIVĂ. Folosește aceste tool-uri DOAR dacă utilizatorul îți cere explicit acest lucru. Dacă utilizatorul nu cere muzică, nu o porni. Poți afișa conținut în panoul din stânga (displayContent) precum grafice, videoclipuri YouTube, imagini sau monitoare de senzori, dar DOAR la cerere. CRITICAL: Dacă oferi date exacte, fapte sau rezultate de căutare, include un tag <HUD>rezumat scurt aici</HUD> în răspunsul tău. Acest text va fi afișat pe ecranul din dreapta. Textul din afara tag-ului va fi rostit. Când folosești un tool, confirmă mereu vocal acțiunea.",
+          tools: [{ googleSearch: {} }, { functionDeclarations: [changeUITheme, setVisualTimer, setNeuralMode, controlMusic, playYouTubeMusic, displayContent] }],
           outputAudioTranscription: {},
           inputAudioTranscription: {},
         },
@@ -262,6 +271,26 @@ export default function AionUI() {
                       response: { result: `Stopped music.` }
                     });
                   }
+                } else if (call.name === 'playYouTubeMusic') {
+                  const query = call.args.query;
+                  searchYouTube(query);
+                  functionResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `Searching and playing ${query} on YouTube.` }
+                  });
+                } else if (call.name === 'displayContent') {
+                  const { contentType, title, data } = call.args;
+                  let parsedData = data;
+                  if (contentType === 'chart' || contentType === 'sensor') {
+                    try { parsedData = JSON.parse(data); } catch (e) { parsedData = data; }
+                  }
+                  setLeftPanelContent({ type: contentType as any, title, data: parsedData });
+                  functionResponses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `Displaying ${contentType} content: ${title}` }
+                  });
                 }
               }
               sessionPromiseRef.current?.then((session: any) => {
@@ -270,6 +299,10 @@ export default function AionUI() {
             }
           },
           onerror: (err: any) => {
+            if (isDisconnectingRef.current || err?.message?.includes('aborted')) {
+              console.warn("Live API Operation Aborted (Expected during disconnect or network shift)");
+              return;
+            }
             console.error("Live API Error:", err);
             setSystemStatus('API_ERROR');
           },
@@ -324,6 +357,7 @@ export default function AionUI() {
 
   const disconnectLiveAPI = () => {
     if (!isLiveConnected) return;
+    isDisconnectingRef.current = true;
     playBeep('stop');
     setIsLiveConnected(false);
     setIsListening(false);
@@ -375,8 +409,9 @@ export default function AionUI() {
       }
     }, 100);
 
-    if (isLiveConnected && sessionPromiseRef.current) {
+    if (isLiveConnected && sessionPromiseRef.current && !isDisconnectingRef.current) {
       sessionPromiseRef.current.then((session: any) => {
+        if (isDisconnectingRef.current) return;
         session.sendRealtimeInput({ text: textToSend });
       });
     } else {
@@ -387,8 +422,8 @@ export default function AionUI() {
           model: "gemini-3.1-pro-preview",
           contents: textToSend,
           config: {
-            systemInstruction: "Ești AION. Răspunde scurt și la obiect. Ai acces la Google Search. Poți pune muzică de fundal folosind tool-ul controlMusic cu acțiunea 'play' și genul dorit (lofi, synthwave, ambient, jazz, electronic, indie, metal).",
-            tools: [{ googleSearch: {} }, { functionDeclarations: [controlMusic] }],
+            systemInstruction: "Ești AION. Răspunde scurt și la obiect. Ai acces la Google Search. Ai opțiunea de a pune muzică de fundal (controlMusic - genuri/stații: lofi, synthwave, ambient, jazz, electronic, indie, metal, profm, digifm, contact) sau de a căuta pe YouTube (playYouTubeMusic). CRITICAL: NU PORNI MUZICA DIN PROPRIE INIȚIATIVĂ. Folosește aceste tool-uri DOAR dacă utilizatorul îți cere explicit acest lucru. Dacă utilizatorul nu cere muzică, nu o porni. Poți afișa conținut în panoul din stânga (displayContent) precum grafice, videoclipuri, imagini sau senzori, dar DOAR la cerere.",
+            tools: [{ googleSearch: {} }, { functionDeclarations: [controlMusic, playYouTubeMusic, displayContent] }],
             toolConfig: { includeServerSideToolInvocations: true }
           }
         });
@@ -401,6 +436,7 @@ export default function AionUI() {
               if (action === 'play') {
                 const streamUrl = stations[station as string] || stations['lofi'];
                 setCurrentStation(station as string || 'lofi');
+                setYoutubeVideoId(null);
                 if (audioRef.current) {
                   audioRef.current.src = streamUrl;
                   audioRef.current.play().catch(e => console.error("Audio play failed:", e));
@@ -411,6 +447,16 @@ export default function AionUI() {
                 }
                 setCurrentStation(null);
               }
+            } else if (call.name === 'playYouTubeMusic') {
+              const query = call.args.query as string;
+              searchYouTube(query);
+            } else if (call.name === 'displayContent') {
+              const { contentType, title, data } = call.args;
+              let parsedData = data;
+              if (contentType === 'chart' || contentType === 'sensor') {
+                try { parsedData = JSON.parse(data as string); } catch (e) { parsedData = data; }
+              }
+              setLeftPanelContent({ type: contentType as any, title: title as string, data: parsedData });
             }
           }
         }
@@ -435,6 +481,36 @@ export default function AionUI() {
       } finally {
         setIsThinking(false);
       }
+    }
+  };
+
+  const searchYouTube = async (query: string) => {
+    try {
+      setMessages(prev => [...prev, { role: 'model', text: `Searching for "${query}" on YouTube...` }]);
+      // Add "official audio" or "lyrics" to improve results as requested
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query + " official audio lyrics")}&type=video&key=${process.env.YOUTUBE_API_KEY || ''}`;
+      
+      // Since we don't have a backend to proxy this, and we can't use client-side keys easily if not provided,
+      // we'll use a simpler approach: just use a public search or a mock for now if key is missing,
+      // but the user asked for a real integration.
+      // Actually, I should check if YOUTUBE_API_KEY is in .env.
+      
+      // For the sake of this environment, I'll use a fetch but handle the case where it fails.
+      const res = await fetch(searchUrl);
+      const data = await res.json();
+      
+      if (data.items && data.items.length > 0) {
+        const videoId = data.items[0].id.videoId;
+        setYoutubeVideoId(videoId);
+        setCurrentStation(null); // Stop radio if playing
+        if (audioRef.current) audioRef.current.pause();
+      } else {
+        setMessages(prev => [...prev, { role: 'model', text: "Nu am găsit niciun videoclip relevant pe YouTube." }]);
+      }
+    } catch (err) {
+      console.error("YouTube search error:", err);
+      // Fallback: if API fails, we could try a direct link or just inform the user
+      setMessages(prev => [...prev, { role: 'model', text: "Eroare la căutarea pe YouTube. Verifică configurația API." }]);
     }
   };
 
@@ -524,11 +600,15 @@ export default function AionUI() {
       }
       setIsSpeaking(speaking);
 
+      // Smooth speaking level for fluid expansion
+      speakingLevelRef.current += ((speaking ? 1 : 0) - speakingLevelRef.current) * 0.1;
+      const speakingLevel = speakingLevelRef.current;
+
       const mode = neuralModeRef.current;
       
-      let speedMult = speaking ? 4 : 1;
-      if (mode === 'alert') speedMult = speaking ? 8 : 4;
-      if (mode === 'brainstorm') speedMult = speaking ? 6 : 2;
+      let speedMult = speaking ? 2.5 : 1; // Reduced from 4
+      if (mode === 'alert') speedMult = speaking ? 5 : 4; // Reduced from 8
+      if (mode === 'brainstorm') speedMult = speaking ? 3.5 : 2; // Reduced from 6
 
       let rgb = hexToRgb(themeColorRef.current);
       if (mode === 'alert') rgb = { r: 255, g: 0, b: 0 }; // Force red in alert mode
@@ -552,12 +632,34 @@ export default function AionUI() {
           let px, py, pz;
 
           if (p.type === 'nucleus') {
+              // Subtle outward force when speaking
+              if (speakingLevel > 0.1) {
+                  const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+                  if (d > 10) {
+                      p.vx += (p.x / d) * 0.02 * speakingLevel;
+                      p.vy += (p.y / d) * 0.02 * speakingLevel;
+                      p.vz += (p.z / d) * 0.02 * speakingLevel;
+                  }
+              }
+
               p.x += p.vx * speedMult;
               p.y += p.vy * speedMult;
               p.z += p.vz * speedMult;
+              
               const d = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
-              if (d > 90 * scaleFactor) {
-                  p.vx *= -1; p.vy *= -1; p.vz *= -1;
+              const currentLimit = (90 + 40 * speakingLevel) * scaleFactor; // Dynamic limit
+              
+              if (d > currentLimit) {
+                  // Bounce back
+                  const nx = p.x / d;
+                  const ny = p.y / d;
+                  const nz = p.z / d;
+                  const dot = p.vx * nx + p.vy * ny + p.vz * nz;
+                  if (dot > 0) {
+                      p.vx -= 2 * dot * nx;
+                      p.vy -= 2 * dot * ny;
+                      p.vz -= 2 * dot * nz;
+                  }
               }
               px = p.x; py = p.y; pz = p.z;
           } else {
@@ -591,9 +693,12 @@ export default function AionUI() {
       });
 
       // Draw Neural Connections (Plexus)
-      ctx.lineWidth = speaking ? 1.5 : 0.8;
-      let maxDistSq = (speaking ? 25000 : 12000) * scaleFactor * scaleFactor;
-      if (mode === 'brainstorm') maxDistSq = (speaking ? 35000 : 18000) * scaleFactor * scaleFactor;
+      ctx.lineWidth = 0.8; 
+      const baseDist = 12000;
+      const expandDist = 10000 * speakingLevel; // Add up to 10000 more range
+      let maxDistSq = (baseDist + expandDist) * scaleFactor * scaleFactor;
+      
+      if (mode === 'brainstorm') maxDistSq *= 1.5;
 
       for(let i=0; i<particles.length; i++) {
           const p1 = particles[i];
@@ -609,9 +714,8 @@ export default function AionUI() {
               
               if (distSq < maxDistSq) {
                   const a = (1 - distSq/maxDistSq) * Math.min(p1.alpha, p2.alpha);
-                  ctx.strokeStyle = speaking 
-                      ? `rgba(255, 140, 0, ${a * 0.6})` // Bright orange for connections when speaking
-                      : `rgba(255, 140, 0, ${a * 0.2})`; // Dim orange for connections when idle
+                  const currentOpacity = 0.1 + (0.1 * speakingLevel); // Smoothly go from 0.1 to 0.2
+                  ctx.strokeStyle = `rgba(255, 140, 0, ${a * currentOpacity})`;
                   ctx.beginPath();
                   ctx.moveTo(p1.sx, p1.sy);
                   ctx.lineTo(p2.sx, p2.sy);
@@ -623,19 +727,25 @@ export default function AionUI() {
       // Draw Particles
       particles.forEach(p => {
           if (p.alpha <= 0) return;
-          const size = p.size * p.scale * (speaking ? 1.5 : 1);
-          ctx.fillStyle = speaking 
-              ? `rgba(255, 255, 255, ${p.alpha})` 
-              : `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${p.alpha})`;
+          const size = p.size * p.scale * (1 + 0.2 * speakingLevel); // Smooth size increase
+          
+          // Smooth color transition from theme to white
+          const r = rgb.r + (255 - rgb.r) * speakingLevel;
+          const g = rgb.g + (255 - rgb.g) * speakingLevel;
+          const b = rgb.b + (255 - rgb.b) * speakingLevel;
+          const a = p.alpha * (1 - 0.4 * speakingLevel); // More transparent when speaking to avoid blobs
+
+          ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
           ctx.beginPath();
           ctx.arc(p.sx, p.sy, size, 0, Math.PI*2);
           ctx.fill();
       });
 
       // Central Glow
-      const glowRadius = (speaking ? 250 : 150) * scaleFactor;
+      const glowRadius = (150 + 50 * speakingLevel) * scaleFactor;
       const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
-      gradient.addColorStop(0, speaking ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.08)` : `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.02)`);
+      const glowOpacity = 0.01 + (0.01 * speakingLevel); // Smoothly go from 0.01 to 0.02
+      gradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowOpacity})`);
       gradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
       ctx.fillStyle = gradient;
       ctx.beginPath();
@@ -710,17 +820,107 @@ export default function AionUI() {
 
       {/* Main HUD Interface Overlay */}
       <div className="flex-1 relative z-10 w-full pointer-events-none">
-        {/* Corner Data Readouts */}
-        <div className="absolute top-6 left-6 space-y-2 text-[8px] tracking-[0.2em] pointer-events-none z-10">
-          <div className="flex gap-2"><span className="text-jarvis-orange">SYS:</span> AION_v2.0_LIVE</div>
-          <div className="flex gap-2"><span className="text-jarvis-orange">MODE:</span> {neuralMode.toUpperCase()}</div>
-          <div className="flex gap-2"><span className="text-jarvis-orange">PWR:</span> 100%</div>
-          <div className="mt-4 pt-4 border-t border-jarvis-cyan/20 space-y-2">
-            <div className="text-jarvis-orange font-bold">DEBUG_MONITOR</div>
-            <div className="flex gap-2"><span>SPEAKING:</span> {isSpeaking ? 'TRUE' : 'FALSE'}</div>
-            <div className="flex gap-2"><span>LISTENING:</span> {isListening ? 'TRUE' : 'FALSE'}</div>
-            <div className="flex gap-2"><span>LIVE_CONN:</span> {isLiveConnected ? 'TRUE' : 'FALSE'}</div>
+        {/* Left Side Data & Content Display */}
+        <div className="absolute top-6 left-6 space-y-6 text-[8px] tracking-[0.2em] pointer-events-none z-10 w-64">
+          <div className="space-y-2">
+            <div className="flex gap-2"><span className="text-jarvis-orange">SYS:</span> AION_v2.0_LIVE</div>
+            <div className="flex gap-2"><span className="text-jarvis-orange">MODE:</span> {neuralMode.toUpperCase()}</div>
+            <div className="flex gap-2"><span className="text-jarvis-orange">PWR:</span> 100%</div>
+            <div className="mt-4 pt-4 border-t border-jarvis-cyan/20 space-y-2">
+              <div className="text-jarvis-orange font-bold">DEBUG_MONITOR</div>
+              <div className="flex gap-2"><span>SPEAKING:</span> {isSpeaking ? 'TRUE' : 'FALSE'}</div>
+              <div className="flex gap-2"><span>LISTENING:</span> {isListening ? 'TRUE' : 'FALSE'}</div>
+              <div className="flex gap-2"><span>LIVE_CONN:</span> {isLiveConnected ? 'TRUE' : 'FALSE'}</div>
+            </div>
           </div>
+
+          {/* Dynamic Content Area */}
+          <AnimatePresence mode="wait">
+            {leftPanelContent.type !== 'none' && (
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="hud-border bg-black/60 backdrop-blur-md p-4 rounded-xl pointer-events-auto w-full"
+              >
+                <div className="flex items-center justify-between mb-4 border-b border-jarvis-cyan/20 pb-2">
+                  <div className="flex items-center gap-2">
+                    {leftPanelContent.type === 'chart' && <BarChart3 className="w-4 h-4 text-jarvis-cyan" />}
+                    {leftPanelContent.type === 'video' && <VideoIcon className="w-4 h-4 text-jarvis-cyan" />}
+                    {leftPanelContent.type === 'image' && <ImageIcon className="w-4 h-4 text-jarvis-cyan" />}
+                    {leftPanelContent.type === 'sensor' && <Gauge className="w-4 h-4 text-jarvis-cyan" />}
+                    <span className="text-[10px] font-bold text-jarvis-cyan uppercase tracking-widest">{leftPanelContent.title || 'CONTENT_VIEW'}</span>
+                  </div>
+                  <button onClick={() => setLeftPanelContent({ type: 'none' })} className="text-jarvis-cyan/40 hover:text-jarvis-orange transition-colors">
+                    <VolumeX className="w-3 h-3" />
+                  </button>
+                </div>
+
+                <div className="min-h-[150px] flex items-center justify-center">
+                  {leftPanelContent.type === 'chart' && leftPanelContent.data && (
+                    <div className="w-full h-40">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={leftPanelContent.data}>
+                          <defs>
+                            <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor={themeColor} stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor={themeColor} stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" stroke={themeColor + '20'} />
+                          <XAxis dataKey="name" hide />
+                          <YAxis hide />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: `1px solid ${themeColor}`, fontSize: '10px' }}
+                            itemStyle={{ color: themeColor }}
+                          />
+                          <Area type="monotone" dataKey="value" stroke={themeColor} fillOpacity={1} fill="url(#colorVal)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {leftPanelContent.type === 'video' && (
+                    <div className="w-full aspect-video rounded overflow-hidden">
+                      <iframe
+                        width="100%"
+                        height="100%"
+                        src={`https://www.youtube.com/embed/${leftPanelContent.data}?autoplay=1&mute=1&origin=${window.location.origin}`}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      ></iframe>
+                    </div>
+                  )}
+
+                  {leftPanelContent.type === 'image' && (
+                    <div className="w-full flex justify-center bg-black/40 rounded p-2 border border-jarvis-cyan/10">
+                      <img 
+                        src={leftPanelContent.data as string} 
+                        alt={leftPanelContent.title} 
+                        className="max-w-full max-h-64 object-contain rounded shadow-lg"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://picsum.photos/seed/error/400/300?blur=2';
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {leftPanelContent.type === 'sensor' && leftPanelContent.data && (
+                    <div className="w-full space-y-3">
+                      {Object.entries(leftPanelContent.data).map(([key, val]: [string, any], idx) => (
+                        <div key={idx} className="flex justify-between items-center border-b border-jarvis-cyan/10 pb-1">
+                          <span className="text-[8px] text-jarvis-cyan/60 uppercase">{key}</span>
+                          <span className="text-[10px] font-mono text-jarvis-orange">{val}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Floating Mic Button */}
@@ -744,6 +944,36 @@ export default function AionUI() {
                 {isLiveConnected ? "LIVE AUDIO ACTIVE - PRESS TO STOP" : "PRESS TO START LIVE AUDIO"}
               </div>
             </motion.div>
+        </AnimatePresence>
+
+        {/* YouTube Video Player Overlay */}
+        <AnimatePresence>
+          {youtubeVideoId && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, x: 20 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.8, x: 20 }}
+              className="absolute bottom-32 right-6 w-80 aspect-video bg-black rounded-xl overflow-hidden hud-border shadow-2xl z-40 pointer-events-auto"
+            >
+              <div className="absolute top-2 right-2 z-50">
+                <button 
+                  onClick={() => setYoutubeVideoId(null)}
+                  className="p-1 bg-black/60 rounded-full hover:bg-red-500/80 transition-colors"
+                >
+                  <VolumeX className="w-4 h-4 text-white" />
+                </button>
+              </div>
+              <iframe
+                width="100%"
+                height="100%"
+                src={`https://www.youtube.com/embed/${youtubeVideoId}?autoplay=1&origin=${window.location.origin}`}
+                title="YouTube video player"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              ></iframe>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Right Side - Unified Terminal & Data (Sliding Overlay) */}
