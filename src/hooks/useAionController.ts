@@ -16,8 +16,6 @@ export function useAionController() {
   const setIsTerminalOpen = useUIStore(state => state.setIsTerminalOpen);
   const leftPanelContent = useUIStore(state => state.leftPanelContent);
   const setLeftPanelContent = useUIStore(state => state.setLeftPanelContent);
-  const youtubeVideoId = useUIStore(state => state.youtubeVideoId);
-  const setYoutubeVideoId = useUIStore(state => state.setYoutubeVideoId);
   const updateSmartHomeDevice = useUIStore(state => state.updateSmartHomeDevice);
 
   // AI State

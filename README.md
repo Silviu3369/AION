@@ -1,20 +1,29 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AION Core
 
-# Run and deploy your AI Studio app
+AION is a high-performance, real-time AI assistant powered by the Gemini 3.1 Live API. It features a multimodal neural interface, integrated smart home controls, and a live audio processing pipeline.
 
-This contains everything you need to run your app locally.
+## Architecture
 
-View your app in AI Studio: https://ai.studio/apps/4c5d2c68-75b3-404f-aef6-fd08fee0a1b1
+- **Live API Pipeline**: Located in `src/hooks/useLiveAPI.ts`. Handles WebSocket connections to Gemini, raw PCM audio capture via AudioWorklets, and low-latency playback.
+- **State Management**: Powered by Zustand (`src/store`). Separates AI session state from UI/Environment state.
+- **Tool Registry**: Extensible tool system in `src/tools` allowing the AI to interact with the web and local state.
+- **Neural UI**: A React-based frontend using Tailwind CSS and Framer Motion for high-fidelity visual feedback.
 
-## Run Locally
+## Key Features
 
-**Prerequisites:**  Node.js
+- **Full-Duplex Voice**: Real-time interruption handling and low-latency response.
+- **HUD Interface**: Dynamic data display (Weather, Crypto, News) driven by AI tool calls.
+- **Smart Home Integration**: Simulated IoT control panel.
+- **Neural Visualization**: Real-time audio frequency analysis mapped to visual nodes.
 
+## Development
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Install dependencies: `npm install`
+2. Start dev server: `npm run dev`
+3. Build for production: `npm run build`
+
+## Technical Constraints
+
+- Requires a valid `GEMINI_API_KEY` in the environment.
+- Audio capture requires `AudioWorklet` support in the browser.
+- Best experienced in Chrome or Safari.
