@@ -100,7 +100,12 @@ export default function NeuralNetwork({ analyser }: NeuralNetworkProps) {
       if (analyser) {
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(dataArray);
-        const sum = dataArray.reduce((a, b) => a + b, 0);
+        
+        // Optimized loop instead of .reduce() for better 60fps performance
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
         const avg = sum / dataArray.length;
         speaking = avg > 2;
       }

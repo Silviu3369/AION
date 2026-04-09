@@ -10,7 +10,7 @@ const workletCode = `
 class AudioCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.bufferSize = 4096;
+    this.bufferSize = 2048; // Reduced from 4096 to lower latency
     this.buffer = new Float32Array(this.bufferSize);
     this.offset = 0;
   }
@@ -40,6 +40,7 @@ interface UseLiveAPIOptions {
   isMuted?: boolean;
   isInputMuted?: boolean;
   audioRef?: React.RefObject<HTMLAudioElement>;
+  messages?: { role: string, text: string }[];
 }
 
 export function useLiveAPI({
@@ -47,7 +48,8 @@ export function useLiveAPI({
   onHudData,
   isMuted = false,
   isInputMuted = false,
-  audioRef
+  audioRef,
+  messages = []
 }: UseLiveAPIOptions = {}) {
   const isLiveConnected = useAIStore(state => state.isLiveConnected);
   const setIsLiveConnected = useAIStore(state => state.setIsLiveConnected);
@@ -154,7 +156,7 @@ export function useLiveAPI({
     };
   }, []);
 
-  const disconnectLiveAPI = useCallback((intentional = true) => {
+  const disconnectLiveAPI = useCallback((intentional = true, playSounds = true) => {
     isIntentionalDisconnectRef.current = intentional;
     if (intentional) {
       reconnectAttemptsRef.current = 0;
@@ -166,7 +168,7 @@ export function useLiveAPI({
 
     if (isDisconnectingRef.current) return;
     isDisconnectingRef.current = true;
-    playBeep('stop');
+    if (playSounds) playBeep('stop');
     setIsLiveConnected(false);
     setIsListening(false);
     onStatusChange?.('OFFLINE');
@@ -195,12 +197,12 @@ export function useLiveAPI({
     analyserRef.current = null;
   }, [onStatusChange, playBeep, stopPlayback, setIsLiveConnected, setIsListening]);
 
-  const connectLiveAPI = useCallback(async () => {
+  const connectLiveAPI = useCallback(async (playSounds = true) => {
     if (isLiveConnected) return;
     isIntentionalDisconnectRef.current = false;
     isDisconnectingRef.current = false;
     isInterruptedRef.current = false;
-    playBeep('start');
+    if (playSounds) playBeep('start');
     onStatusChange?.('CONNECTING...');
 
     if (!process.env.GEMINI_API_KEY) {
@@ -237,10 +239,23 @@ export function useLiveAPI({
       analyserRef.current = analyser;
       nextPlayTimeRef.current = playbackCtx.currentTime;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          sampleRate: 16000, 
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
       mediaStreamRef.current = stream;
 
       const source = audioCtx.createMediaStreamSource(stream);
+      
+      // Add a GainNode to boost microphone sensitivity
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = 2.5; // Boost volume by 2.5x so you don't have to speak loudly
+      source.connect(gainNode);
       
       let processor: AudioWorkletNode | ScriptProcessorNode;
       
@@ -261,7 +276,7 @@ export function useLiveAPI({
         };
       } catch (workletError) {
         console.warn("AudioWorklet not supported or failed, falling back to ScriptProcessorNode", workletError);
-        processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        processor = audioCtx.createScriptProcessor(2048, 1, 1); // Reduced from 4096
         (processor as ScriptProcessorNode).onaudioprocess = (e) => {
           if (!sessionPromiseRef.current || isDisconnectingRef.current || isInputMutedRef.current) return;
           const inputData = e.inputBuffer.getChannelData(0);
@@ -274,10 +289,18 @@ export function useLiveAPI({
       }
 
       processorRef.current = processor;
-      source.connect(processor);
+      gainNode.connect(processor); // Connect gain node to processor instead of source directly
       processor.connect(audioCtx.destination);
 
       const ai = getAI();
+      
+      // Inject history if this is a reconnect
+      let currentSystemInstruction = AION_SYSTEM_INSTRUCTION;
+      if (messages && messages.length > 0) {
+        const historyText = messages.slice(-10).map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
+        currentSystemInstruction += `\n\n[SYSTEM NOTE: The connection was reset. Here is the recent conversation history to maintain context:]\n${historyText}`;
+      }
+
       const sessionPromise = ai.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
@@ -285,7 +308,7 @@ export function useLiveAPI({
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
           },
-          systemInstruction: AION_SYSTEM_INSTRUCTION,
+          systemInstruction: currentSystemInstruction,
             tools: [
               { functionDeclarations: getToolDeclarations() }
             ],
@@ -310,8 +333,13 @@ export function useLiveAPI({
             }
 
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio && !isMuted && !isInterruptedRef.current) {
-              playAudioChunk(base64Audio);
+            if (base64Audio) {
+              // If we receive new audio, it means the model is speaking a new turn.
+              // We must reset the interrupted flag so it doesn't stay stuck muted.
+              isInterruptedRef.current = false;
+              if (!isMuted) {
+                playAudioChunk(base64Audio);
+              }
             }
 
             if (message.serverContent?.modelTurn?.parts) {
@@ -343,32 +371,32 @@ export function useLiveAPI({
             
             if (!isIntentionalDisconnectRef.current && reconnectAttemptsRef.current < 3) {
               // Auto-reconnect logic (Exponential Backoff)
-              disconnectLiveAPI(false);
+              disconnectLiveAPI(false, false); // Silent disconnect
               reconnectAttemptsRef.current++;
               const delay = Math.pow(2, reconnectAttemptsRef.current) * 1000;
               onStatusChange?.(`RECONNECTING (${reconnectAttemptsRef.current}/3)...`);
               reconnectTimeoutRef.current = window.setTimeout(() => {
                 isDisconnectingRef.current = false; // Reset to allow reconnect
-                connectLiveAPI();
+                connectLiveAPI(false); // Silent connect
               }, delay);
             } else {
               // Graceful disconnect on fatal error or max attempts
-              setTimeout(() => disconnectLiveAPI(true), 2000);
+              setTimeout(() => disconnectLiveAPI(true, true), 2000);
             }
           },
           onclose: () => {
             console.log("Live API: Connection closed");
             if (!isIntentionalDisconnectRef.current && reconnectAttemptsRef.current < 3) {
-              disconnectLiveAPI(false);
+              disconnectLiveAPI(false, false); // Silent disconnect
               reconnectAttemptsRef.current++;
               const delay = Math.pow(2, reconnectAttemptsRef.current) * 1000;
               onStatusChange?.(`RECONNECTING (${reconnectAttemptsRef.current}/3)...`);
               reconnectTimeoutRef.current = window.setTimeout(() => {
                 isDisconnectingRef.current = false;
-                connectLiveAPI();
+                connectLiveAPI(false); // Silent connect
               }, delay);
             } else {
-              disconnectLiveAPI(true);
+              disconnectLiveAPI(true, true);
             }
           }
         }
@@ -400,26 +428,28 @@ export function useLiveAPI({
     return false;
   }, []);
 
-  // Visualizer loop for neural network
+  // Audio analysis loop (Optimized to ~15fps to save CPU)
   useEffect(() => {
-    let animationId: number;
-    const updateSpeaking = () => {
+    const intervalId = setInterval(() => {
       let speaking = false;
       if (analyserRef.current) {
         const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
         analyserRef.current.getByteFrequencyData(dataArray);
-        const sum = dataArray.reduce((a, b) => a + b, 0);
+        
+        // Optimized loop instead of .reduce()
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
         const avg = sum / dataArray.length;
         speaking = avg > 2;
       }
       setIsSpeaking(speaking);
       
-      speakingLevelRef.current += ((speaking ? 1 : 0) - speakingLevelRef.current) * 0.1;
-      
-      animationId = requestAnimationFrame(updateSpeaking);
-    };
-    updateSpeaking();
-    return () => cancelAnimationFrame(animationId);
+      speakingLevelRef.current += ((speaking ? 1 : 0) - speakingLevelRef.current) * 0.2; // Adjusted smoothing for lower framerate
+    }, 66); // ~15 fps
+    
+    return () => clearInterval(intervalId);
   }, [setIsSpeaking]);
 
   return {

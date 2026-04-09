@@ -7,7 +7,6 @@ import Terminal from './aion/Terminal';
 import LeftPanel from './aion/LeftPanel';
 import Header from './aion/Header';
 import MicButton from './aion/MicButton';
-import YouTubePlayer from './aion/YouTubePlayer';
 
 export default function AionUI() {
   const {
@@ -39,8 +38,6 @@ export default function AionUI() {
           isLiveConnected={isLiveConnected} 
           connectLiveAPI={connectLiveAPI}
         />
-
-        <YouTubePlayer />
 
         <Terminal 
           handleSend={handleSend}

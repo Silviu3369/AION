@@ -53,6 +53,7 @@ export function useAionController() {
     isMuted,
     isInputMuted,
     audioRef,
+    messages,
     onStatusChange: (status) => {
       if (status === 'LIVE_AUDIO_ACTIVE' && isInputMuted) {
         setSystemStatus('MIC_MUTED');

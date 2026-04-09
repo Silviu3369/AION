@@ -1,6 +1,5 @@
 import { Type } from '@google/genai';
 import { AionTool } from '../registry';
-import { useUIStore } from '../../store/useUIStore';
 import { useAIStore } from '../../store/useAIStore';
 
 export const playYouTubeMusicTool: AionTool = {
@@ -30,7 +29,6 @@ export const playYouTubeMusicTool: AionTool = {
       context.audioRef.current.src = '';
       context.audioRef.current.removeAttribute('src');
     }
-    useUIStore.getState().setYoutubeVideoId(null);
     
     return { result: `Searching and playing ${query} on YouTube.` };
   }

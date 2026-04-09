@@ -9,7 +9,6 @@ interface UIState {
     data?: any;
     title?: string;
   };
-  youtubeVideoId: string | null;
   smartHomeState: {
     lights: { state: string; color?: string };
     thermostat: { value: string };
@@ -21,7 +20,6 @@ interface UIState {
   setNeuralMode: (mode: 'calm' | 'brainstorm' | 'alert') => void;
   setIsTerminalOpen: (isOpen: boolean) => void;
   setLeftPanelContent: (content: UIState['leftPanelContent']) => void;
-  setYoutubeVideoId: (id: string | null) => void;
   updateSmartHomeDevice: (device: string, action: string, value?: string) => void;
 }
 
@@ -30,7 +28,6 @@ export const useUIStore = create<UIState>((set) => ({
   neuralMode: 'calm',
   isTerminalOpen: true,
   leftPanelContent: { type: 'none' },
-  youtubeVideoId: null,
   smartHomeState: {
     lights: { state: 'off', color: 'cyan' },
     thermostat: { value: '22' },
@@ -42,7 +39,6 @@ export const useUIStore = create<UIState>((set) => ({
   setNeuralMode: (mode) => set({ neuralMode: mode }),
   setIsTerminalOpen: (isOpen) => set({ isTerminalOpen: isOpen }),
   setLeftPanelContent: (content) => set({ leftPanelContent: content }),
-  setYoutubeVideoId: (id) => set({ youtubeVideoId: id }),
   
   updateSmartHomeDevice: (device, action, value) => set((state) => {
     const newState = { ...state.smartHomeState } as any;
